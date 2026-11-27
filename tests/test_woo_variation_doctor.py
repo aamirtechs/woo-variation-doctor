@@ -1,14 +1,17 @@
 """Tests for woo-variation-doctor."""
 
+import csv
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -626,6 +629,84 @@ class TestOutput(unittest.TestCase):
         path = os.path.join(EXAMPLES, "clean.csv")
         code, _text = run_cli([path, "--max-variations", "-1"])
         self.assertEqual(code, 2)
+
+
+class TableOutputTests(unittest.TestCase):
+    def run_command(self, path, *flags):
+        script = Path(EXAMPLES).parent / "woo_variation_doctor.py"
+        return subprocess.run(
+            [sys.executable, str(script), str(path), "--as-of",
+             "2026-11-18", *map(str, flags)],
+            capture_output=True, text=True, timeout=10)
+
+    def test_sample_table_preserves_report_and_check_status(self):
+        path = Path(EXAMPLES) / "variations.csv"
+        with tempfile.TemporaryDirectory() as directory:
+            table = Path(directory) / "table.csv"
+            for flags in ((), ("--json",)):
+                with self.subTest(flags=flags):
+                    baseline = self.run_command(path, "--check", *flags)
+                    result = self.run_command(
+                        path, "--check", *flags, "--table-out", table)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(result.stdout, baseline.stdout)
+                    self.assertEqual(result.stderr, "")
+                    with table.open(encoding="utf-8", newline="") as handle:
+                        self.assertEqual(list(csv.reader(handle)), [
+                            ["parent", "variations", "min_price",
+                             "max_price", "on_sale"],
+                            ["P-100", "8", "29.99", "34.99", "4"],
+                            ["P-200", "6", "49.99", "49.99", "1"],
+                            ["P-300", "4", "14.99", "14.99", "1"],
+                            ["P-400", "5", "19.99", "19.99", "1"],
+                        ])
+
+    def test_table_quotes_parent_and_leaves_missing_prices_empty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "input.csv"
+            path.write_text('variation_id,parent\nV-1,"Café, blue"\n',
+                            encoding="utf-8")
+            table = Path(directory) / "table.csv"
+            report = Path(directory) / "report.json"
+            result = self.run_command(
+                path, "--table-out", table, "--json", "--out", report)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(json.loads(report.read_text(encoding="utf-8")),
+                             json.loads(self.run_command(path, "--json").stdout))
+            with table.open(encoding="utf-8", newline="") as handle:
+                self.assertEqual(list(csv.reader(handle))[1:],
+                                 [["Café, blue", "1", "", "", "0"]])
+
+    def test_table_rejects_path_collisions_before_overwriting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "input.csv"
+            original = b"variation_id,parent\nV-1,P-100\n"
+            path.write_bytes(original)
+            alias = Path(directory) / "alias.csv"
+            os.link(path, alias)
+            out = Path(directory) / "report.csv"
+            for table, flags, name in (
+                    (path, (), "input"),
+                    (alias, (), "input"),
+                    (out, ("--out", out), "--out")):
+                with self.subTest(table=table):
+                    result = self.run_command(
+                        path, "--table-out", table, *flags)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("must differ from " + name, result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertEqual(path.read_bytes(), original)
+                    self.assertFalse(out.exists())
+
+    def test_table_write_failure_returns_cli_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(EXAMPLES) / "clean.csv"
+            table = Path(directory) / "missing" / "table.csv"
+            result = self.run_command(path, "--table-out", table)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn(f"cannot write {table}", result.stderr)
+            self.assertEqual(result.stdout, "")
 
 
 if __name__ == "__main__":

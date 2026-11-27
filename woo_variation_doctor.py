@@ -50,6 +50,7 @@ Usage:
 import argparse
 import csv
 import json
+import os
 import sys
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -575,6 +576,25 @@ def summarize(variations, findings):
             "per_parent": per_parent}
 
 
+def write_table(path, rows):
+    """Write the per-parent summary to a CSV file."""
+    fields = ("parent", "variations", "min_price", "max_price", "on_sale")
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def same_path(first, second):
+    """Check for matching paths, including links to existing files."""
+    if os.path.realpath(first) == os.path.realpath(second):
+        return True
+    try:
+        return os.path.samefile(first, second)
+    except FileNotFoundError:
+        return False
+
+
 def render_text(variations, findings, summary):
     """Render the text report."""
     lines = [str(item) for item in findings]
@@ -659,6 +679,8 @@ def build_parser():
                         help="with --check, also exit 1 on warnings")
     parser.add_argument("--out", default=None,
                         help="write the report to a file")
+    parser.add_argument("--table-out", metavar="PATH",
+                        help="write the per-parent summary as CSV")
     return parser
 
 
@@ -682,6 +704,23 @@ def main(argv=None):
     findings.extend(audit(variations, as_of,
                           max_variations=args.max_variations))
     summary = summarize(variations, findings)
+    if args.table_out is not None:
+        try:
+            if same_path(args.table_out, args.csv_file):
+                raise ValueError("--table-out must differ from input CSV")
+            if args.out is not None and same_path(args.table_out, args.out):
+                raise ValueError("--table-out must differ from --out")
+            write_table(args.table_out, summary["per_parent"])
+            # Existing files reveal aliases on case-insensitive filesystems.
+            if args.out is not None and same_path(args.table_out, args.out):
+                raise ValueError("--table-out must differ from --out")
+        except ValueError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 2
+        except OSError as exc:
+            print("error: cannot write %s: %s" % (args.table_out, exc),
+                  file=sys.stderr)
+            return 2
     if args.json:
         report = render_json(variations, findings, summary)
     else:
