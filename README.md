@@ -242,6 +242,10 @@ the findings as JSON (money as strings, to keep the
 decimals exact), and `--out` writes the report to a
 file.
 
+Use `--table-out table.csv` to also export the per-parent
+summary as CSV. Missing prices are empty cells. Choose a
+different path from the input CSV and any `--out` report.
+
 ## Options
 
 | Flag | Meaning |
@@ -252,6 +256,7 @@ file.
 | `--check` | Exit 1 if any error is found |
 | `--strict` | With --check, also exit 1 on warnings |
 | `--out` | Write the report to a file |
+| `--table-out PATH` | Write the per-parent summary to a CSV file |
 
 ## Edge cases
 
@@ -292,7 +297,7 @@ file.
 python3 -m unittest discover -s tests -v
 ```
 
-84 tests, all passing: money and stock parsing, flag and
+Tests cover money and stock parsing, flag and
 date parsing, attributes cell parsing, header aliases and
 BOM handling, extra columns, malformed rows, empty
 variation ids, invalid prices, stock, dates, attributes,
@@ -301,9 +306,8 @@ combinations, no-price, sale above regular, sale with no
 end, expired sales and boundaries, sale start after end,
 stock but disabled, zero stock enabled, backorder
 exemption, too many variations and boundaries, summary
-counts, per-parent price ranges, text and JSON output,
-and `--check` and `--strict` exit codes. The same 84
-tests pass under pytest.
+counts, per-parent price ranges, text, JSON, and CSV
+output, and `--check` and `--strict` exit codes.
 
 ## License
 
