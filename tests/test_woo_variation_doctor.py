@@ -564,6 +564,38 @@ class TestOutput(unittest.TestCase):
         self.assertIn("Variations: 3, parents: 2, findings: 0, "
                       "errors: 0, warnings: 0", text)
 
+    def test_largest_discount_line_sample(self):
+        path = os.path.join(EXAMPLES, "variations.csv")
+        code, text = run_cli([path, "--as-of", "2026-11-18"])
+        self.assertEqual(code, 0)
+        self.assertIn("Largest discount: V-106 regular $29.99, "
+                      "sale $14.99, discount $15.00", text)
+
+    def test_largest_discount_line_clean(self):
+        path = os.path.join(EXAMPLES, "clean.csv")
+        code, text = run_cli([path, "--as-of", "2026-11-18"])
+        self.assertEqual(code, 0)
+        self.assertIn("Largest discount: V-101 regular $29.99, "
+                      "sale $24.99, discount $5.00", text)
+
+    def test_largest_discount_omitted_without_sales(self):
+        path = write_file(HEADER + row())
+        code, text = run_cli([path, "--as-of", "2026-11-18"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("Largest discount", text)
+
+    def test_largest_discount_json_unchanged(self):
+        path = os.path.join(EXAMPLES, "variations.csv")
+        code, text = run_cli([path, "--as-of", "2026-11-18",
+                              "--json"])
+        self.assertEqual(code, 0)
+        report = json.loads(text)
+        self.assertNotIn("largest_discount", report)
+        self.assertEqual(set(report), {
+            "variations", "parents", "findings", "errors",
+            "warnings", "on_sale", "no_price", "duplicate_skus",
+            "per_parent"})
+
     def test_check_exits_1_on_error(self):
         path = os.path.join(EXAMPLES, "variations.csv")
         code, _text = run_cli([path, "--as-of", "2026-11-18",

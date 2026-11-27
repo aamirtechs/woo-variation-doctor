@@ -585,6 +585,25 @@ def render_text(variations, findings, summary):
     lines.append("On sale: %(on_sale)d, variations with no price: "
                  "%(no_price)d, duplicate SKUs: "
                  "%(duplicate_skus)d" % summary)
+    best = None
+    for variation in variations:
+        regular = variation["regular_price"]
+        sale = variation["sale_price"]
+        if regular is None or sale is None:
+            continue
+        discount = regular - sale
+        if discount <= 0:
+            continue
+        if best is None or discount > best[0]:
+            best = (discount, variation)
+    if best is not None:
+        discount, variation = best
+        lines.append("Largest discount: %s regular %s, sale %s, "
+                     "discount %s"
+                     % (variation["variation_id"],
+                        fmt_money(variation["regular_price"]),
+                        fmt_money(variation["sale_price"]),
+                        fmt_money(discount)))
     lines.append("")
     lines.append("Per-parent summary:")
     lines.append("%-10s %10s %11s %11s %7s"
