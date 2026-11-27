@@ -437,7 +437,7 @@ def parse_csv(path, as_of):
 
 
 def audit(variations, as_of,
-          max_variations=DEFAULT_MAX_VARIATIONS):
+          max_variations=DEFAULT_MAX_VARIATIONS, min_price=None):
     """Audit parsed variations and return a list of findings.
 
     Variation level rules run first, then the per-parent
@@ -460,6 +460,13 @@ def audit(variations, as_of,
                 variation_id, "no-price", "error",
                 "variation has no regular price, so it is not "
                 "purchasable even when the parent is published"))
+        if min_price is not None and regular is not None \
+                and regular < min_price:
+            findings.append(Finding(
+                variation_id, "below-min-price", "warning",
+                "regular price %s is below the floor %s, "
+                "which is usually a typo"
+                % (fmt_money(regular), fmt_money(min_price))))
         if sale is not None and regular is not None \
                 and sale > regular:
             findings.append(Finding(
@@ -635,6 +642,17 @@ def parse_as_of(text):
     return parsed
 
 
+def decimal_arg(text):
+    """Parse a command line decimal, rejecting junk, NaN and infinity."""
+    try:
+        value = Decimal(text)
+    except InvalidOperation:
+        raise argparse.ArgumentTypeError("invalid decimal value: %r" % text)
+    if not value.is_finite():
+        raise argparse.ArgumentTypeError("must be a finite number: %r" % text)
+    return value
+
+
 def build_parser():
     """Build the command line parser."""
     parser = argparse.ArgumentParser(
@@ -648,6 +666,10 @@ def build_parser():
                         default=DEFAULT_MAX_VARIATIONS,
                         help="a parent with more variations than "
                         "this is flagged (default: 50)")
+    parser.add_argument("--min-price", type=decimal_arg, default=None,
+                        metavar="DOLLARS",
+                        help="warn for every variation whose "
+                        "regular price is below this floor")
     parser.add_argument("--as-of", default=None,
                         help="date to compare sale dates against, "
                         "for example 2026-11-18 (default: now)")
@@ -669,6 +691,10 @@ def main(argv=None):
         print("error: --max-variations must be at least 0",
               file=sys.stderr)
         return 2
+    if args.min_price is not None and args.min_price < 0:
+        print("error: --min-price must be at least 0",
+              file=sys.stderr)
+        return 2
     as_of = parse_as_of(args.as_of)
     if as_of is None:
         print("error: --as-of %r is not a readable date"
@@ -680,7 +706,8 @@ def main(argv=None):
         print("error: %s" % exc, file=sys.stderr)
         return 2
     findings.extend(audit(variations, as_of,
-                          max_variations=args.max_variations))
+                          max_variations=args.max_variations,
+                          min_price=args.min_price))
     summary = summarize(variations, findings)
     if args.json:
         report = render_json(variations, findings, summary)

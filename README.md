@@ -247,6 +247,7 @@ file.
 | Flag | Meaning |
 | --- | --- |
 | `--max-variations` | A parent with more variations than this is flagged (default: 50) |
+| `--min-price DOLLARS` | Warn for every variation whose regular price is below this floor (no floor is checked when the flag is absent) |
 | `--as-of` | Date to compare sale dates against, for example 2026-11-18 (default: now) |
 | `--json` | Emit JSON instead of text |
 | `--check` | Exit 1 if any error is found |

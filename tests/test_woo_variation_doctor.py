@@ -6,7 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -601,6 +601,61 @@ class TestOutput(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("findings: 18, errors: 11, warnings: 7",
                       text)
+
+    def test_min_price_flag_adds_warnings(self):
+        path = os.path.join(EXAMPLES, "variations.csv")
+        code, text = run_cli([path, "--as-of", "2026-11-18",
+                              "--min-price", "20", "--check"])
+        self.assertEqual(code, 1)
+        self.assertIn("findings: 25, errors: 11, warnings: 14",
+                      text)
+
+    def test_min_price_flags_each_variation_below_floor(self):
+        path = os.path.join(EXAMPLES, "variations.csv")
+        code, text = run_cli([path, "--as-of", "2026-11-18",
+                              "--min-price", "20"])
+        self.assertEqual(code, 0)
+        for vid in ("V-301", "V-302", "V-303", "V-304",
+                    "V-401", "V-402", "V-403", "V-404", "V-405"):
+            self.assertIn(vid, text)
+        self.assertIn("below the floor", text)
+
+    def test_min_price_absent_checks_no_floor(self):
+        path = os.path.join(EXAMPLES, "variations.csv")
+        code, text = run_cli([path, "--as-of", "2026-11-18"])
+        self.assertNotIn("below the floor", text)
+
+    def test_negative_min_price_exits_2(self):
+        path = os.path.join(EXAMPLES, "clean.csv")
+        code, _text = run_cli([path, "--min-price", "-1"])
+        self.assertEqual(code, 2)
+
+    def test_min_price_invalid_text_exits_2(self):
+        path = os.path.join(EXAMPLES, "clean.csv")
+        buffer = io.StringIO()
+        with redirect_stderr(buffer), self.assertRaises(SystemExit) as caught:
+            wvd.main([path, "--min-price", "abc"])
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("invalid decimal value", buffer.getvalue())
+        self.assertNotIn("Traceback", buffer.getvalue())
+
+    def test_min_price_nan_exits_2(self):
+        path = os.path.join(EXAMPLES, "clean.csv")
+        buffer = io.StringIO()
+        with redirect_stderr(buffer), self.assertRaises(SystemExit) as caught:
+            wvd.main([path, "--min-price", "nan"])
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("must be a finite number", buffer.getvalue())
+        self.assertNotIn("Traceback", buffer.getvalue())
+
+    def test_min_price_infinity_exits_2(self):
+        path = os.path.join(EXAMPLES, "clean.csv")
+        buffer = io.StringIO()
+        with redirect_stderr(buffer), self.assertRaises(SystemExit) as caught:
+            wvd.main([path, "--min-price", "inf"])
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("must be a finite number", buffer.getvalue())
+        self.assertNotIn("Traceback", buffer.getvalue())
 
     def test_out_writes_file(self):
         path = os.path.join(EXAMPLES, "clean.csv")
